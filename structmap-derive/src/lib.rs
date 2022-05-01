@@ -15,21 +15,21 @@ use std::collections::BTreeMap;
 /// Implements the functionality for converting entries in a BTreeMap into attributes and values of a
 /// struct. It will consume a tokenized version of the initial struct declaration, and use code
 /// generation to implement the `FromMap` trait for instantiating the contents of the struct.
+//由编译器执行该函数？
 #[proc_macro_derive(FromMap)]
 pub fn from_map(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
 
-    // parse out all the field names in the struct as `Ident`s
+    //解析出struct的所有字段—— Vec<&Ident>
     let fields = match ast.data {
         Data::Struct(st) => st.fields,
-        _ => panic!("Implementation must be a struct"),
+        _ => panic!("Implementation Must Be A Struct"),
     };
+    //将预定义的Struct的字段名称(&Ident)，作为 Map的Keys(String)
     let idents: Vec<&Ident> = fields
         .iter()
         .filter_map(|field| field.ident.as_ref())
         .collect::<Vec<&Ident>>();
-
-    // convert all the field names into strings
     let keys: Vec<String> = idents
         .clone()
         .iter()
@@ -41,14 +41,10 @@ pub fn from_map(input: TokenStream) -> TokenStream {
         .iter()
         .map(|field| match field.ty.clone() {
             Type::Path(typepath) => {
-                // TODO: options and results
-                // TODO: vecs
-                // TODO: genericized numerics
-
                 // get the type of the specified field, lowercase
                 let typename: String = quote! {#typepath}.to_string().to_lowercase();
-
                 // initialize new Ident for codegen
+                //Ident 的字符串名称以及关联的Span？
                 Ident::new(&typename, Span::mixed_site())
             }
             _ => unimplemented!(),
@@ -63,38 +59,19 @@ pub fn from_map(input: TokenStream) -> TokenStream {
     let tokens = quote! {
         use structmap::value::Value;
         use structmap::{StringMap, GenericMap};
-
+        //impl <T> FromMap for Structs<U> Where T: TraitBound
         impl #impl_generics FromMap for #name #ty_generics #where_clause {
-
-            /* FIXME
-            fn from_stringmap(mut hashmap: StringMap) -> #name {
+            fn from_genericmap(mut hashmap: GenericMap) -> #name {//#name 对应Struct类型
                 let mut settings = #name::default();
-                #(
+                #(//对keys中的每一项，分别获取Map 中的(K, V)项
                     match hashmap.entry(String::from(#keys)) {
-                        ::std::collections::hash_map::Entry::Occupied(entry) => {
-                            let value = match entry.get() {
-                                Some(val) => val.parse::<#typecalls>().unwrap(),
-                                None => unreachable!()
-                            };
-                            settings.#idents = value;
-                        },
-                        _ => unreachable!()
-                    }
-                )*
-                settings
-            }
-            */
-
-            fn from_genericmap(mut hashmap: GenericMap) -> #name {
-                let mut settings = #name::default();
-                #(
-                    match hashmap.entry(String::from(#keys)) {
-                        ::std::collections::btree_map::Entry::Occupied(entry) => {
+                        ::std::collections::btree_map::Entry::Occupied(entry) => {//匹配解构出 entry
                             // parse out primitive value from generic type using typed call
                             let value = match entry.get().#typecalls() {
                                 Some(val) => val,
                                 None => panic!("Cannot parse out map entry")
                             };
+                            //对Struct中的字段逐一赋值
                             settings.#idents = value;
                         },
                         _ => panic!("Cannot parse out map entry"),
