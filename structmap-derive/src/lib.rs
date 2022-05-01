@@ -16,19 +16,22 @@ use std::collections::BTreeMap;
 /// struct. It will consume a tokenized version of the initial struct declaration, and use code
 /// generation to implement the `FromMap` trait for instantiating the contents of the struct.
 //由编译器执行该函数？
+/// BTreeMap -> Struct（预定义）
 #[proc_macro_derive(FromMap)]
 pub fn from_map(input: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
 
-    //解析出struct的所有字段—— Vec<&Ident>
+    //解析预定义的Struct的所有字段～最终封装在 Vec<T, P>
+    //将使用有名方式({})定义的Struct的字段名称(&Ident)，作为 Map的Keys(String)
     let fields = match ast.data {
+        //Brace ～{}，对应有字段名称的定义方式——struct { k:v }
+        //Parenthesis ～()，对应无字段名称（使用下标偏移）的定义方式——struct(a, b)
         Data::Struct(st) => st.fields,
         _ => panic!("Implementation Must Be A Struct"),
     };
-    //将预定义的Struct的字段名称(&Ident)，作为 Map的Keys(String)
     let idents: Vec<&Ident> = fields
         .iter()
-        .filter_map(|field| field.ident.as_ref())
+        .filter_map(|field| field.ident.as_ref()) //根据 Field定义，其 ident成员为 Option<Ident>～使用元组方式定义的Struct，该字段为None，将被过滤
         .collect::<Vec<&Ident>>();
     let keys: Vec<String> = idents
         .clone()
@@ -36,14 +39,15 @@ pub fn from_map(input: TokenStream) -> TokenStream {
         .map(|ident| ident.to_string())
         .collect::<Vec<String>>();
 
-    // parse out all the primitive types in the struct as Idents
+    //解析有名字段的类型～用以将GenericMap中被 Num类型封装的 Entry Value的值进行拆箱
+    //[Ident { ident: "i64", span: #6 bytes(72..79) }, Ident { ident: "i64", span: #6 bytes(72..79) }, Ident { ident: "i64", span: #6 bytes(72..79) }]
     let typecalls: Vec<Ident> = fields
         .iter()
+        .filter(|field| field.ident.as_ref().is_some())
         .map(|field| match field.ty.clone() {
             Type::Path(typepath) => {
-                // get the type of the specified field, lowercase
+                // "i64"
                 let typename: String = quote! {#typepath}.to_string().to_lowercase();
-                // initialize new Ident for codegen
                 //Ident 的字符串名称以及关联的Span？
                 Ident::new(&typename, Span::mixed_site())
             }
@@ -51,8 +55,8 @@ pub fn from_map(input: TokenStream) -> TokenStream {
         })
         .collect::<Vec<Ident>>();
 
-    // get the name identifier of the struct input AST
-    let name: &Ident = &ast.ident;
+    //获取待转换目标Struct的名称
+    let name: &Ident = &ast.ident;//Ident { ident: "MCMonitor", span: #0 bytes(89..98) }
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
     // start codegen of a generic or non-generic impl for the given struct using quasi-quoting
@@ -66,15 +70,15 @@ pub fn from_map(input: TokenStream) -> TokenStream {
                 #(//对keys中的每一项，分别获取Map 中的(K, V)项
                     match hashmap.entry(String::from(#keys)) {
                         ::std::collections::btree_map::Entry::Occupied(entry) => {//匹配解构出 entry
-                            // parse out primitive value from generic type using typed call
+                            //由structmap 的value.rs可知～GenericMap的中的 Entry.Value，为类似 Num(I64(0))形式，需要经过对应item的类型方法（.i64()之类）进行转换，方可得到 Some(value)形式
                             let value = match entry.get().#typecalls() {
                                 Some(val) => val,
-                                None => panic!("Cannot parse out map entry")
+                                None => panic!("Cannot Parse Out Map Entry")
                             };
                             //对Struct中的字段逐一赋值
                             settings.#idents = value;
                         },
-                        _ => panic!("Cannot parse out map entry"),
+                        _ => panic!("Cannot Parse Out Map Entry"),
                     }
                 )*
                 settings
@@ -84,28 +88,23 @@ pub fn from_map(input: TokenStream) -> TokenStream {
     TokenStream::from(tokens)
 }
 
-/// Converts a given input struct into a BTreeMap where the keys are the attribute names assigned to
-/// the values of the entries.
+/// Struct -> BTreeMap
 #[proc_macro_derive(ToMap, attributes(rename))]
 pub fn to_map(input_struct: TokenStream) -> TokenStream {
     let ast = syn::parse_macro_input!(input_struct as DeriveInput);
 
-    // check for struct type and parse out fields
     let fields = match ast.data {
         Data::Struct(st) => st.fields,
-        _ => panic!("Implementation must be a struct"),
+        _ => panic!("Implementation Must Be A Struct"),
     };
 
-    // before unrolling out more, get mapping of any renaming needed to be done
+    //Struct的字段，通过rename属性，可以设置与字段名称不相同的 Key至 Map
     let rename_map = parse_rename_attrs(&fields);
 
-    // parse out all the field names in the struct as `Ident`s
     let idents: Vec<&Ident> = fields
         .iter()
         .filter_map(|field| field.ident.as_ref())
         .collect::<Vec<&Ident>>();
-
-    // convert all the field names into strings
     let keys: Vec<String> = idents
         .clone()
         .iter()
@@ -116,15 +115,12 @@ pub fn to_map(input_struct: TokenStream) -> TokenStream {
         })
         .collect::<Vec<String>>();
 
-    // get the name identifier of the struct input AST
     let name: &Ident = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
     // start codegen for to_hashmap functionality that converts a struct into a hashmap
     let tokens = quote! {
-
         impl #impl_generics ToMap for #name #ty_generics #where_clause {
-
             fn to_stringmap(mut input_struct: #name) -> structmap::StringMap {
                 let mut map = structmap::StringMap::new();
                 #(
