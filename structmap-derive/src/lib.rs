@@ -56,7 +56,7 @@ pub fn from_map(input: TokenStream) -> TokenStream {
         .collect::<Vec<Ident>>();
 
     //获取待转换目标Struct的名称
-    let name: &Ident = &ast.ident;//Ident { ident: "MCMonitor", span: #0 bytes(89..98) }
+    let name: &Ident = &ast.ident; //Ident { ident: "MCMonitor", span: #0 bytes(89..98) }
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
     // start codegen of a generic or non-generic impl for the given struct using quasi-quoting
@@ -144,54 +144,54 @@ pub fn to_map(input_struct: TokenStream) -> TokenStream {
 /// Helper method used to parse out any `rename` attribute definitions in a struct
 /// marked with the ToMap trait, returning a mapping between the original field name
 /// and the one being changed for later use when doing codegen.
+//只是一个函数（并非proc_macro_attribute）
 fn parse_rename_attrs(fields: &Fields) -> BTreeMap<String, String> {
     let mut rename: BTreeMap<String, String> = BTreeMap::new();
     match fields {
         Fields::Named(_) => {
-            // iterate over fields available and attributes
+            //遍历解构体的所有字段
             for field in fields.iter() {
+                //遍历一个字段的所有属性
                 for attr in field.attrs.iter() {
-                    // parse original struct field name
                     let field_name = field.ident.as_ref().unwrap().to_string();
+                    //字段名称已包含在rename映射表中
                     if rename.contains_key(&field_name) {
-                        panic!("Cannot redefine field name multiple times");
+                        panic!("Cannot Redefine Field Name Multiple Times");
                     }
-
-                    // parse out name value pairs in attributes
-                    // first get `lst` in #[rename(lst)]
+                    //解析(rename)属性的第一项（逗号分隔？）～#[rename(lst)]
                     match attr.parse_meta() {
                         Ok(syn::Meta::List(lst)) => {
-                            // then parse key-value name
+                            //解析第一项name = "MC"(,)
                             match lst.nested.first() {
                                 Some(syn::NestedMeta::Meta(syn::Meta::NameValue(nm))) => {
-                                    // check path to be = `name`
+                                    //nm即 name = MC的语法解析（匹配）结果～path(name)/Token(=)
                                     let path = nm.path.get_ident().unwrap().to_string();
                                     if path != "name" {
                                         panic!("Must Be `#[rename(name = 'VALUE')]`");
                                     }
-
+                                    //解析 name='MC'中的属性值=> val
                                     let lit = match &nm.lit {
                                         syn::Lit::Str(val) => val.value(),
                                         _ => {
-                                            panic!("Must be `#[rename(name = 'VALUE')]`");
+                                            panic!("Must Be `#[rename(name = 'VALUE')]`");
                                         }
                                     };
                                     rename.insert(field_name, lit);
                                 }
                                 _ => {
-                                    panic!("Must be `#[rename(name = 'VALUE')]`");
+                                    panic!("Must Be `#[rename(name = 'VALUE')]`");
                                 }
                             }
                         }
                         _ => {
-                            panic!("Must be `#[rename(name = 'VALUE')]`");
+                            panic!("Must Be `#[rename(name = 'VALUE')]`");
                         }
                     }
                 }
             }
         }
         _ => {
-            panic!("Must have named fields");
+            panic!("Must Have Named Fields");
         }
     }
     rename

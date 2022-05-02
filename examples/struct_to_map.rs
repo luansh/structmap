@@ -1,6 +1,6 @@
-use structmap::{ToMap, value::Value};
-use structmap_derive::ToMap;
 use std::collections::BTreeMap;
+use structmap::{value::Value, ToMap};
+use structmap_derive::ToMap;
 
 #[derive(Debug, Default, ToMap)]
 struct MCMonitor {
@@ -11,7 +11,11 @@ struct MCMonitor {
 }
 
 fn main() {
-    let mc_monitor: MCMonitor = MCMonitor { mc0:1024_i64, mc1:1024_i64, mc:2048_i64 };
+    let mc_monitor: MCMonitor = MCMonitor {
+        mc0: 1024_i64,
+        mc1: 1024_i64,
+        mc: 2048_i64,
+    };
     let maps: BTreeMap<String, Value> = MCMonitor::to_genericmap(mc_monitor);
     println!("{:?}", maps);
     println!("{:?}", maps.get("MCs").unwrap().i64().unwrap());
