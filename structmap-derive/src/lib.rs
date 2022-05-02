@@ -167,7 +167,7 @@ fn parse_rename_attrs(fields: &Fields) -> BTreeMap<String, String> {
                                     // check path to be = `name`
                                     let path = nm.path.get_ident().unwrap().to_string();
                                     if path != "name" {
-                                        panic!("Must be `#[rename(name = 'VALUE')]`");
+                                        panic!("Must Be `#[rename(name = 'VALUE')]`");
                                     }
 
                                     let lit = match &nm.lit {
